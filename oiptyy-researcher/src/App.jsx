@@ -339,87 +339,19 @@ function exportCSV(results) {
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 async function researchCompany(name) {
-  const systemPrompt = `You are a deep B2B intelligence researcher. You MUST use the web_search tool multiple times to gather real data before writing your final answer. Do NOT skip searches or make up information.
-
-Required search sequence for every company:
-1. Search "[company name] owner founder CEO" — find who owns it
-2. Search "[owner name] LinkedIn background" — find owner background  
-3. Search "[company name] reviews complaints" — find Google/Yelp/BBB reviews
-4. Search "[company name] [city] news" — find recent news
-
-Only after completing all 4 searches, output a JSON object.`
-
-  const userPrompt = `Research this company thoroughly: "${name}"
-
-After searching, return ONLY a valid JSON object with these exact keys:
-{
-  "industry": "What the company does, their industry, estimated headcount and revenue range",
-  "ownership": "Is it privately held or public? Owner/founder full name(s). Source where found.",
-  "owner_profiles": "Owner background: where they live, education, career history, how long they have owned the business",
-  "owner_hobbies": "Owner personal interests found online: sports, golf, fishing, hunting, church, charity, teams they follow. Search their Facebook, LinkedIn, local news.",
-  "owner_family": "Spouse name, number/ages of children if publicly mentioned in interviews or social media",
-  "pain_points": "3 specific operational challenges this type of business faces",
-  "tech_stack": "Software tools they likely use: CRM, scheduling, marketing, communication tools",
-  "recent_news": "News, awards, expansions, hires, or problems from the past 12 months",
-  "reviews_negative": "Most common complaints from Google Maps, Yelp, BBB, or Trustpilot. Include 1-2 direct quote snippets from real reviews if found.",
-  "reviews_positive": "Most common praise themes from reviews",
-  "company_struggles": "Based on reviews and research, what real problems is this business facing operationally right now?",
-  "email_angle": "Personalized 2-3 sentence cold email opener for OPTYy. Use owner first name if found, reference a specific real struggle or complaint you found."
-}`
-
-  const tools = [{ type: 'web_search_20250305', name: 'web_search' }]
-  const messages = [{ role: 'user', content: userPrompt }]
-
-  // Agentic loop — keep going until Claude stops using tools (max 8 rounds)
-  for (let round = 0; round < 8; round++) {
-    const res = await fetch('/api/claude', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 3000,
-        system: systemPrompt,
-        tools,
-        messages
-      })
-    })
-    if (!res.ok) throw new Error('API error ' + res.status)
-    const data = await res.json()
-
-    // Add assistant turn to conversation history
-    messages.push({ role: 'assistant', content: data.content })
-
-    // If Claude stopped (no more tool use), extract the JSON from final text
-    if (data.stop_reason === 'end_turn') {
-      const text  = data.content.filter(b => b.type === 'text').map(b => b.text).join('')
-      const match = text.match(/\{[\s\S]*\}/)
-      if (!match) throw new Error('No JSON in response')
-      return JSON.parse(match[0])
-    }
-
-    // If Claude used tools, collect all tool_use blocks and build tool_result turn
-    const toolUses = data.content.filter(b => b.type === 'tool_use')
-    if (!toolUses.length) {
-      // No tool use and not end_turn — extract whatever text is there
-      const text  = data.content.filter(b => b.type === 'text').map(b => b.text).join('')
-      const match = text.match(/\{[\s\S]*\}/)
-      if (match) return JSON.parse(match[0])
-      throw new Error('Unexpected stop without JSON')
-    }
-
-    // Add placeholder tool results so Claude can continue
-    // The actual search results come back in the next assistant turn
-    messages.push({
-      role: 'user',
-      content: toolUses.map(tu => ({
-        type: 'tool_result',
-        tool_use_id: tu.id,
-        content: 'Search completed. Continue with next search or write final JSON.'
-      }))
-    })
+  // Agentic loop runs server-side in the Netlify function
+  const res = await fetch('/api/claude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ research_company: name })
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || 'API error ' + res.status)
   }
-
-  throw new Error('Research exceeded maximum rounds')
+  const data = await res.json()
+  if (data.error) throw new Error(data.error)
+  return data.result
 }
 
 async function ghlUpsertContact(company, apiKey, locationId) {
