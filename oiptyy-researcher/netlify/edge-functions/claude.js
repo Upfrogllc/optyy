@@ -20,16 +20,13 @@ export default async (req) => {
   try {
     const text = await req.text()
     body = JSON.parse(text)
-  } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
+  } catch (e) {
+    return new Response(JSON.stringify({ error: 'Invalid JSON', detail: e.message }), {
       status: 400, headers: { 'Content-Type': 'application/json', ...CORS }
     })
   }
 
   // ── Research mode ─────────────────────────────────────────────────────────
-  // web_search_20250305 executes automatically on Anthropic's servers.
-  // We just make ONE call — Claude runs all its searches internally and
-  // returns end_turn with the final JSON when done.
   if (body.research_company) {
     const name = body.research_company
 
@@ -45,7 +42,7 @@ Only after completing all 4 searches, output your final JSON.`
 
     const userPrompt = `Research this company thoroughly using web search: "${name}"
 
-After completing all required searches, return ONLY a valid JSON object — no markdown, no preamble:
+After completing all required searches, return ONLY a valid JSON object — no markdown, no preamble, no code blocks:
 {
   "industry": "What the company does, their industry, estimated headcount and revenue range",
   "ownership": "Privately held or public? Owner/founder full name(s) and source where found",
@@ -62,36 +59,36 @@ After completing all required searches, return ONLY a valid JSON object — no m
 }`
 
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': anthropicKey,
           'anthropic-version': '2023-06-01',
-          'anthropic-beta': 'web-search-2025-03-05',
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 4000,
           system: systemPrompt,
-          tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }],
           messages: [{ role: 'user', content: userPrompt }]
         })
       })
 
-      if (!res.ok) {
-        const err = await res.text()
-        return new Response(JSON.stringify({ error: `Anthropic ${res.status}`, detail: err }), {
+      const rawText = await apiRes.text()
+
+      if (!apiRes.ok) {
+        return new Response(JSON.stringify({ error: `Anthropic ${apiRes.status}`, detail: rawText }), {
           status: 500, headers: { 'Content-Type': 'application/json', ...CORS }
         })
       }
 
-      const data = await res.json()
-      const text  = data.content.filter(b => b.type === 'text').map(b => b.text).join('')
+      const data = JSON.parse(rawText)
+      const text = data.content.filter(b => b.type === 'text').map(b => b.text).join('')
       const match = text.match(/\{[\s\S]*\}/)
 
       if (!match) {
-        return new Response(JSON.stringify({ error: 'No JSON in response', raw: text.slice(0, 800) }), {
+        return new Response(JSON.stringify({ error: 'No JSON in response', raw: text.slice(0, 1000) }), {
           status: 500, headers: { 'Content-Type': 'application/json', ...CORS }
         })
       }
@@ -101,7 +98,7 @@ After completing all required searches, return ONLY a valid JSON object — no m
       })
 
     } catch (e) {
-      return new Response(JSON.stringify({ error: e.message }), {
+      return new Response(JSON.stringify({ error: e.message, stack: e.stack }), {
         status: 500, headers: { 'Content-Type': 'application/json', ...CORS }
       })
     }
