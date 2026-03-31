@@ -1,0 +1,18 @@
+[[redirects]]
+  from = "/api/anthropic/*"
+  to = "https://api.anthropic.com/:splat"
+  status = 200
+  force = true
+  [redirects.headers]
+    x-api-key = ""
+
+[[redirects]]
+  from = "/api/ghl/*"
+  to = "https://services.leadconnectorhq.com/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
