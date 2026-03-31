@@ -230,16 +230,26 @@ async function ghlCreateContact(company, apiKey, locationId) {
   const firstName = nameParts[0] ? nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1) : 'Contact'
   const lastName = nameParts[1] ? nameParts[1].charAt(0).toUpperCase() + nameParts[1].slice(1) : company.name
 
+async function ghlCreateContact(company, apiKey, locationId) {
+  const [firstName, ...lastParts] = (company.name || 'Unknown').split(' ')
+  const lastName = lastParts.join(' ') || ''
+
   const res = await fetch('/api/ghl/contacts/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
     body: JSON.stringify({
-      firstName, lastName,
+      firstName,
+      lastName,
       email: company.email,
       companyName: company.name,
       locationId,
       tags: ['oiptyy-prospect'],
-      customField: { notes: company.data?.email_angle || '' }
+      customFields: [
+        { id: 'industry',    value: company.data?.industry    || '' },
+        { id: 'pain_points', value: company.data?.pain_points || '' },
+        { id: 'email_angle', value: company.data?.email_angle || '' },
+        { id: 'notes',       value: company.data?.email_angle || '' },
+      ]
     })
   })
   const data = await res.json()
@@ -260,12 +270,16 @@ async function ghlCreateOpportunity(company, contactId, apiKey, locationId, pipe
       contactId,
       monetaryValue: 0,
       customFields: [
-        { key: 'industry', value: company.data?.industry || '' },
-        { key: 'pain_points', value: company.data?.pain_points || '' },
-        { key: 'email_angle', value: company.data?.email_angle || '' },
+        { id: 'industry',    value: company.data?.industry    || '' },
+        { id: 'pain_points', value: company.data?.pain_points || '' },
+        { id: 'email_angle', value: company.data?.email_angle || '' },
       ]
     })
   })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.message || 'Opportunity creation failed')
+  return data.opportunity?.id || data.id
+}
   const data = await res.json()
   if (!res.ok) throw new Error(data.message || 'Opportunity creation failed')
   return data.opportunity?.id || data.id
