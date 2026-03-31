@@ -325,10 +325,10 @@ function parseCSV(text) {
 }
 
 function exportCSV(results) {
-  const headers = ['company_name','email','industry','pain_points','tech_stack','recent_news','email_angle','ghl_status']
+  const headers = ['company_name','email','industry','ownership','owner_profiles','owner_hobbies','owner_family','pain_points','tech_stack','recent_news','reviews_negative','reviews_positive','company_struggles','email_angle','ghl_status']
   const rows = results.filter(r => r.data).map(r => {
     const d = r.data
-    return [r.name, r.email, d.industry||'', d.pain_points||'', d.tech_stack||'', d.recent_news||'', d.email_angle||'', r.ghlStatus||'']
+    return [r.name, r.email, d.industry||'', d.ownership||'', d.owner_profiles||'', d.owner_hobbies||'', d.owner_family||'', d.pain_points||'', d.tech_stack||'', d.recent_news||'', d.reviews_negative||'', d.reviews_positive||'', d.company_struggles||'', d.email_angle||'', r.ghlStatus||'']
       .map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')
   })
   const blob = new Blob([[headers.join(','), ...rows].join('\n')], { type: 'text/csv' })
@@ -339,23 +339,36 @@ function exportCSV(results) {
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 async function researchCompany(name) {
-  const prompt = `You are a B2B sales research assistant helping sell OPTYy — a communication control platform that protects customer conversations across all messaging systems.
+  const prompt = `You are a deep B2B intelligence researcher helping sell OPTYy — a communication control platform that protects customer conversations across all messaging systems.
 
 Research the company: "${name}"
 
-Use web search to find current, accurate information. Return ONLY a valid JSON object, no markdown, no preamble:
+Use multiple web searches to find the most accurate, current information. Search for:
+1. The company itself (ownership, size, industry)
+2. The owner(s) by name — LinkedIn, news articles, local business profiles
+3. Google reviews, Yelp, BBB, Trustpilot, or any review site for this company
+4. Any news, lawsuits, or complaints about this company
+
+Return ONLY a valid JSON object, no markdown, no preamble, no trailing commas:
 {
-  "industry": "Industry and estimated company size",
-  "pain_points": "2-3 specific operational challenges this company likely faces",
-  "tech_stack": "Known or likely tools: CRM, ERP, marketing automation, etc.",
-  "recent_news": "Notable news in past 12 months, or 'No recent news found.'",
-  "email_angle": "A specific 2-3 sentence cold email opening for OPTYy. Reference their actual situation."
+  "industry": "Industry, what they do, and estimated size (employees/revenue)",
+  "ownership": "Privately held or public? List the owner(s) full name(s) if found. Include LinkedIn or source URL if available.",
+  "owner_profiles": "Personal background on the owner(s): city they live in, schools attended, career history, any public social media presence or interests found online.",
+  "owner_hobbies": "Any hobbies, interests, or personal passions found — golf, fishing, sports teams, philanthropy, church, etc. Search their social profiles and news mentions.",
+  "owner_family": "Any publicly available info on family — spouse name, children mentioned in interviews or social media. Only include what is publicly stated.",
+  "pain_points": "2-3 specific operational pain points this company likely faces based on their industry and size.",
+  "tech_stack": "Known or likely tools: CRM, ERP, marketing automation, scheduling software, etc.",
+  "recent_news": "Any notable news, expansions, funding, awards, or leadership changes in the past 12 months.",
+  "reviews_negative": "Summarize the most common NEGATIVE themes from Google, Yelp, BBB, or other reviews. What are customers complaining about? Quote specific review snippets if found. If no reviews found say so.",
+  "reviews_positive": "Summarize the most common positive themes from reviews. What do customers love?",
+  "company_struggles": "Based on negative reviews, complaints, news, or patterns — what are the real operational struggles this company appears to be facing right now?",
+  "email_angle": "A highly personalized 2-3 sentence cold email opening for OPTYy. Reference the owner by first name if known, mention a specific pain point or struggle you found, and connect it to how OPTYy protects customer communication."
 }`
   const res = await fetch('/api/claude', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514', max_tokens: 1000,
+      model: 'claude-sonnet-4-20250514', max_tokens: 2500,
       tools: [{ type: 'web_search_20250305', name: 'web_search' }],
       messages: [{ role: 'user', content: prompt }]
     })
@@ -428,38 +441,66 @@ async function ghlCreateOpportunity(company, contactId, apiKey, locationId, pipe
 function buildNoteBody(company) {
   const d = company.data
   const now = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-  return `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-OPTYy AI PROSPECT RESEARCH
+  return `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OPTYy AI PROSPECT INTELLIGENCE
 Researched: ${now}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 🏢 COMPANY
 ${company.name}
 ${company.email}
 
-─────────────────────────────
+─────────────────────────────────
 📊 INDUSTRY & SIZE
 ${d.industry || 'N/A'}
 
-─────────────────────────────
+─────────────────────────────────
+🔐 OWNERSHIP
+${d.ownership || 'N/A'}
+
+─────────────────────────────────
+👤 OWNER BACKGROUND
+${d.owner_profiles || 'N/A'}
+
+─────────────────────────────────
+🎯 OWNER INTERESTS & HOBBIES
+${d.owner_hobbies || 'N/A'}
+
+─────────────────────────────────
+👨‍👩‍👧 FAMILY (PUBLIC INFO ONLY)
+${d.owner_family || 'N/A'}
+
+─────────────────────────────────
 ⚠️ PAIN POINTS
 ${d.pain_points || 'N/A'}
 
-─────────────────────────────
+─────────────────────────────────
 🛠️ TECH STACK
 ${d.tech_stack || 'N/A'}
 
-─────────────────────────────
+─────────────────────────────────
 📰 RECENT NEWS
 ${d.recent_news || 'No recent news found.'}
 
-─────────────────────────────
+─────────────────────────────────
+👎 NEGATIVE REVIEWS & COMPLAINTS
+${d.reviews_negative || 'No reviews found.'}
+
+─────────────────────────────────
+👍 POSITIVE REVIEW THEMES
+${d.reviews_positive || 'No reviews found.'}
+
+─────────────────────────────────
+🚨 COMPANY STRUGGLES (ANALYSIS)
+${d.company_struggles || 'N/A'}
+
+─────────────────────────────────
 ✉️ OIPTYY EMAIL ANGLE
 ${d.email_angle || 'N/A'}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Generated by OPTYy Prospect Research
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
 }
 
 async function ghlCreateNote(contactId, company, apiKey) {
@@ -555,9 +596,25 @@ function CompanyCard({ company: c, expanded, onToggle, onPushGHL, ghlReady, sele
         <div className="company-card-body">
           <div className="research-grid">
             <div className="research-block"><div className="research-label">Industry & size</div><div className="research-value">{c.data.industry}</div></div>
+            <div className="research-block"><div className="research-label">Ownership</div><div className="research-value">{c.data.ownership}</div></div>
+            <div className="research-block" style={{gridColumn:'1/-1'}}><div className="research-label">Owner background</div><div className="research-value">{c.data.owner_profiles}</div></div>
+            <div className="research-block"><div className="research-label">Owner hobbies & interests</div><div className="research-value">{c.data.owner_hobbies}</div></div>
+            <div className="research-block"><div className="research-label">Family (public info)</div><div className="research-value">{c.data.owner_family}</div></div>
             <div className="research-block"><div className="research-label">Pain points</div><div className="research-value">{c.data.pain_points}</div></div>
             <div className="research-block"><div className="research-label">Tech stack</div><div className="research-value">{c.data.tech_stack}</div></div>
             <div className="research-block"><div className="research-label">Recent news</div><div className="research-value">{c.data.recent_news}</div></div>
+            <div className="research-block" style={{gridColumn:'1/-1',borderColor:'rgba(239,68,68,0.15)',background:'rgba(239,68,68,0.04)'}}>
+              <div className="research-label" style={{color:'#f87171'}}>👎 Negative reviews & complaints</div>
+              <div className="research-value">{c.data.reviews_negative}</div>
+            </div>
+            <div className="research-block" style={{gridColumn:'1/-1',borderColor:'rgba(25,195,125,0.15)',background:'rgba(25,195,125,0.04)'}}>
+              <div className="research-label" style={{color:'#19C37D'}}>👍 Positive review themes</div>
+              <div className="research-value">{c.data.reviews_positive}</div>
+            </div>
+            <div className="research-block" style={{gridColumn:'1/-1',borderColor:'rgba(251,191,36,0.2)',background:'rgba(251,191,36,0.04)'}}>
+              <div className="research-label" style={{color:'#fbbf24'}}>🚨 Company struggles (analysis)</div>
+              <div className="research-value">{c.data.company_struggles}</div>
+            </div>
           </div>
           <div className="email-angle-block">
             <div className="email-angle-label">OPTYy email angle</div>
