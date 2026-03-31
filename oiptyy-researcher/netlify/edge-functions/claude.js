@@ -17,7 +17,10 @@ export default async (req) => {
   }
 
   let body
-  try { body = await req.json() } catch {
+  try {
+    const text = await req.text()
+    body = JSON.parse(text)
+  } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
       status: 400, headers: { 'Content-Type': 'application/json', ...CORS }
     })
