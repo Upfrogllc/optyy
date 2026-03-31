@@ -340,11 +340,13 @@ Use web search to find current, accurate information. Return ONLY a valid JSON o
   return JSON.parse(match[0])
 }
 
-async function ghlCreateContact(company, apiKey, locationId) {
+async function ghlUpsertContact(company, apiKey, locationId) {
   const parts     = (company.name || 'Unknown').trim().split(' ')
   const firstName = parts[0] || 'Unknown'
   const lastName  = parts.slice(1).join(' ') || ''
-  const res = await fetch('/api/ghl/contacts/', {
+
+  // GHL upsert: matches on email — updates existing contact or creates new one
+  const res = await fetch('/api/ghl/contacts/upsert/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
     body: JSON.stringify({
@@ -359,8 +361,12 @@ async function ghlCreateContact(company, apiKey, locationId) {
     })
   })
   const data = await res.json()
-  if (!res.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message || 'Contact creation failed')
-  return data.contact?.id || data.id
+  if (!res.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message || 'Contact upsert failed')
+
+  // GHL upsert returns { contact, new: true/false }
+  const contactId = data.contact?.id || data.id
+  const isNew     = data.new !== false  // default assume new if field absent
+  return { contactId, isNew }
 }
 
 async function ghlCreateOpportunity(company, contactId, apiKey, locationId, pipelineId, stageId) {
@@ -691,11 +697,13 @@ function ResearchPage({ settings, addToast }) {
     }
     updateCompany(company.id, { ghlStatus: 'syncing' })
     try {
-      const contactId = await ghlCreateContact(company, ghlApiKey, ghlLocationId)
+      const { contactId, isNew } = await ghlUpsertContact(company, ghlApiKey, ghlLocationId)
       await ghlCreateNote(contactId, company, ghlApiKey)
-      await ghlCreateOpportunity(company, contactId, ghlApiKey, ghlLocationId, ghlPipelineId, ghlStageId)
+      if (isNew) {
+        await ghlCreateOpportunity(company, contactId, ghlApiKey, ghlLocationId, ghlPipelineId, ghlStageId)
+      }
       updateCompany(company.id, { ghlStatus: 'synced' })
-      addToast(`${company.name} added to GHL`, 'success')
+      addToast(isNew ? `${company.name} created in GHL` : `${company.name} updated in GHL`, 'success')
     } catch (e) {
       updateCompany(company.id, { ghlStatus: 'error' })
       addToast(`GHL error: ${e.message}`, 'error')
