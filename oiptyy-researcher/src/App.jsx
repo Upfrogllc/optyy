@@ -267,6 +267,34 @@ const css = `
 
   select.setting-input { cursor: pointer; }
   select.setting-input option { background: #0F2A44; color: #D6E1EA; }
+
+  /* ── Selection ── */
+  .checkbox-wrap {
+    width: 18px; height: 18px; flex-shrink: 0;
+    border: 1.5px solid rgba(255,255,255,0.12);
+    border-radius: 5px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; background: transparent;
+    margin-right: 2px;
+  }
+  .checkbox-wrap:hover { border-color: #19C37D; }
+  .checkbox-wrap.checked {
+    background: linear-gradient(135deg, #19C37D, #1FB6A6);
+    border-color: transparent;
+  }
+  .company-card.selected { border-color: rgba(25,195,125,0.35); background: rgba(25,195,125,0.03); }
+
+  .selection-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px;
+    background: rgba(25,195,125,0.07);
+    border: 1px solid rgba(25,195,125,0.2);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    font-size: 13px; color: #19C37D;
+  }
+  .selection-bar-count { font-weight: 600; }
+  .selection-bar-actions { display: flex; gap: 8px; margin-left: auto; }
 `
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
@@ -482,18 +510,34 @@ function Toasts({ toasts }) {
 }
 
 // ─── Company Card ─────────────────────────────────────────────────────────────
-function CompanyCard({ company: c, expanded, onToggle, onPushGHL, ghlReady }) {
+function CompanyCard({ company: c, expanded, onToggle, onPushGHL, ghlReady, selected, onSelect }) {
   const badgeClass = { pending: 'badge-pending', working: 'badge-working', done: 'badge-done', error: 'badge-error' }[c.status] || 'badge-pending'
   const badgeLabel = { pending: 'Pending', working: 'Researching', done: 'Done', error: 'Error' }[c.status]
+  const selectable  = c.status === 'done' && c.ghlStatus !== 'synced'
 
   return (
-    <div className={`company-card ${expanded ? 'active' : ''}`}>
-      <div className="company-card-header" onClick={onToggle}>
-        <div>
+    <div className={`company-card ${expanded ? 'active' : ''} ${selected ? 'selected' : ''}`}>
+      <div className="company-card-header">
+        {/* Checkbox — only shown for done, unsynced contacts */}
+        {selectable && (
+          <div
+            className={`checkbox-wrap ${selected ? 'checked' : ''}`}
+            onClick={e => { e.stopPropagation(); onSelect() }}
+          >
+            {selected && (
+              <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="2 6 5 9 10 3"/>
+              </svg>
+            )}
+          </div>
+        )}
+        {!selectable && <div style={{ width: 18, flexShrink: 0 }} />}
+
+        <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={onToggle}>
           <div className="company-name">{c.name}</div>
           <div className="company-email">{c.email}</div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }} onClick={onToggle}>
           {c.ghlStatus === 'synced'  && <span className="badge badge-synced">Protected</span>}
           {c.ghlStatus === 'syncing' && <span className="badge badge-working"><span className="spinner" /> Syncing</span>}
           {c.ghlStatus === 'error'   && <span className="badge badge-error">GHL Error</span>}
@@ -652,6 +696,7 @@ function ResearchPage({ settings, addToast }) {
   const [progress, setProgress]   = useState(0)
   const [statusMsg, setStatusMsg] = useState('')
   const [expanded, setExpanded]   = useState({})
+  const [selected, setSelected]   = useState(new Set())
   const fileRef  = useRef()
   const abortRef = useRef(false)
 
@@ -720,7 +765,33 @@ function ResearchPage({ settings, addToast }) {
   const pushAllToGHL = async () => {
     const ready = companies.filter(c => c.status === 'done' && c.ghlStatus !== 'synced')
     for (const c of ready) await pushToGHL(c)
+    setSelected(new Set())
   }
+
+  const pushSelectedToGHL = async () => {
+    const ready = companies.filter(c => selected.has(c.id) && c.ghlStatus !== 'synced')
+    for (const c of ready) await pushToGHL(c)
+    setSelected(new Set())
+  }
+
+  const toggleSelect = (id) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const selectAllDone = () => {
+    const ids = companies.filter(c => c.status === 'done' && c.ghlStatus !== 'synced').map(c => c.id)
+    setSelected(new Set(ids))
+  }
+
+  const clearSelection = () => setSelected(new Set())
+
+  const selectedCount    = selected.size
+  const selectableDone   = companies.filter(c => c.status === 'done' && c.ghlStatus !== 'synced')
+  const allDoneSelected  = selectableDone.length > 0 && selectableDone.every(c => selected.has(c.id))
 
   const ghlReady = settings.ghlApiKey && settings.ghlLocationId && settings.ghlPipelineId && settings.ghlStageId
 
@@ -772,10 +843,51 @@ function ResearchPage({ settings, addToast }) {
               {running ? <><span className="spinner" /> Researching…</> : done === total ? 'All done' : `Research ${total - done} companies`}
             </button>
             {running && <button className="btn btn-ghost" onClick={() => abortRef.current = true}>Stop</button>}
-            {done > 0 && !running && ghlReady && <button className="btn btn-ghost" onClick={pushAllToGHL}>Push all to GHL</button>}
             {done > 0 && <button className="btn btn-ghost" onClick={() => exportCSV(companies)}>Export CSV</button>}
-            <button className="btn btn-ghost" onClick={() => { setCompanies([]); setProgress(0); setStatusMsg(''); setExpanded({}) }}>New upload</button>
+            <button className="btn btn-ghost" onClick={() => { setCompanies([]); setProgress(0); setStatusMsg(''); setExpanded({}); setSelected(new Set()) }}>New upload</button>
           </div>
+
+          {/* Selection bar */}
+          {ghlReady && selectableDone.length > 0 && (
+            <div className="selection-bar">
+              <div
+                className={`checkbox-wrap ${allDoneSelected ? 'checked' : ''}`}
+                style={{ cursor: 'pointer' }}
+                onClick={allDoneSelected ? clearSelection : selectAllDone}
+              >
+                {allDoneSelected && (
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="2 6 5 9 10 3"/>
+                  </svg>
+                )}
+              </div>
+              <span className="selection-bar-count">
+                {selectedCount > 0 ? `${selectedCount} selected` : `${selectableDone.length} ready to push`}
+              </span>
+              <div className="selection-bar-actions">
+                {selectedCount === 0 && (
+                  <button className="btn btn-ghost" style={{ fontSize: 12, padding: '7px 13px' }} onClick={selectAllDone}>
+                    Select all
+                  </button>
+                )}
+                {selectedCount > 0 && (
+                  <>
+                    <button className="btn btn-ghost" style={{ fontSize: 12, padding: '7px 13px' }} onClick={clearSelection}>
+                      Clear
+                    </button>
+                    <button className="btn btn-primary" style={{ fontSize: 12, padding: '7px 13px' }} onClick={pushSelectedToGHL}>
+                      Push {selectedCount} to GHL
+                    </button>
+                  </>
+                )}
+                {selectedCount === 0 && (
+                  <button className="btn btn-primary" style={{ fontSize: 12, padding: '7px 13px' }} onClick={pushAllToGHL}>
+                    Push all {selectableDone.length} to GHL
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {(running || progress > 0) && (
             <div className="card card-sm" style={{ marginBottom: 20 }}>
@@ -790,6 +902,8 @@ function ResearchPage({ settings, addToast }) {
                 key={c.id} company={c} expanded={!!expanded[c.id]}
                 onToggle={() => setExpanded(e => ({ ...e, [c.id]: !e[c.id] }))}
                 onPushGHL={() => pushToGHL(c)} ghlReady={ghlReady}
+                selected={selected.has(c.id)}
+                onSelect={() => toggleSelect(c.id)}
               />
             ))}
           </div>
