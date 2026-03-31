@@ -4,6 +4,23 @@ const CORS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
+const ANTHROPIC_HEADERS = {
+  'Content-Type': 'application/json',
+  'anthropic-version': '2023-06-01',
+}
+
+async function callAnthropic(apiKey, payload) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { ...ANTHROPIC_HEADERS, 'x-api-key': apiKey },
+    body: JSON.stringify(payload)
+  })
+  const text = await res.text()
+  let data
+  try { data = JSON.parse(text) } catch { data = { raw: text } }
+  return { ok: res.ok, status: res.status, data }
+}
+
 export default async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: CORS })
@@ -30,75 +47,68 @@ export default async (req) => {
   if (body.research_company) {
     const name = body.research_company
 
-    const systemPrompt = `You are a deep B2B intelligence researcher. You MUST use the web_search tool multiple times before writing your final JSON answer. Do NOT skip searches or invent information.
-
-Required searches before answering:
-1. Search "[company name] owner founder CEO" to find who owns it
-2. Search "[owner name] background hobbies family LinkedIn" to find owner profile
-3. Search "[company name] reviews complaints BBB Yelp Google" to find customer feedback
-4. Search "[company name] news 2024 2025" for recent developments
-
-Only after completing all 4 searches, output your final JSON.`
-
-    const userPrompt = `Research this company thoroughly using web search: "${name}"
-
-After completing all required searches, return ONLY a valid JSON object — no markdown, no preamble, no code blocks:
-{
-  "industry": "What the company does, their industry, estimated headcount and revenue range",
-  "ownership": "Privately held or public? Owner/founder full name(s) and source where found",
-  "owner_profiles": "Owner background: where they live, education, career history, how long they have owned the business",
-  "owner_hobbies": "Owner personal interests found online: sports, golf, fishing, hunting, church, charity, teams they follow",
-  "owner_family": "Spouse name, children if publicly mentioned in interviews or social media. Only public info.",
-  "pain_points": "3 specific operational challenges this type of business faces",
-  "tech_stack": "Software tools they likely use: CRM, scheduling, marketing, communication tools",
-  "recent_news": "News, awards, expansions, hires, or problems from the past 12 months",
-  "reviews_negative": "Most common complaints from Google, Yelp, BBB, or Trustpilot. Include 1-2 direct quote snippets from real reviews if found.",
-  "reviews_positive": "Most common praise themes from reviews",
-  "company_struggles": "Based on reviews and research, what real problems is this business facing operationally right now?",
-  "email_angle": "Personalized 2-3 sentence cold email opener for OPTYy. Use owner first name if found, reference a specific real struggle or complaint."
-}`
-
     try {
-      const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': anthropicKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 4000,
-          system: systemPrompt,
-          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }],
-          messages: [{ role: 'user', content: userPrompt }]
-        })
+      const { ok, status, data } = await callAnthropic(anthropicKey, {
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 4000,
+        system: `You are a B2B intelligence researcher. Use web_search multiple times to research companies thoroughly before writing your final JSON answer. Search for: (1) company owner/CEO, (2) owner background and hobbies, (3) company reviews and complaints, (4) recent news.`,
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }],
+        messages: [{
+          role: 'user',
+          content: `Research "${name}" and return ONLY this JSON (no markdown, no preamble):
+{
+  "industry": "what they do, size, revenue estimate",
+  "ownership": "privately held or public, owner name(s) and source",
+  "owner_profiles": "owner background, location, education, career",
+  "owner_hobbies": "personal interests, sports, hobbies found online",
+  "owner_family": "spouse, children if publicly mentioned",
+  "pain_points": "3 operational challenges this business faces",
+  "tech_stack": "software tools they likely use",
+  "recent_news": "notable news in past 12 months",
+  "reviews_negative": "common complaints from Google/Yelp/BBB with quote snippets",
+  "reviews_positive": "common praise themes",
+  "company_struggles": "real operational problems based on research",
+  "email_angle": "personalized 2-3 sentence OPTYy cold email opener using owner first name and a specific struggle found"
+}`
+        }]
       })
 
-      const rawText = await apiRes.text()
-
-      if (!apiRes.ok) {
-        return new Response(JSON.stringify({ error: `Anthropic ${apiRes.status}`, detail: rawText }), {
-          status: 500, headers: { 'Content-Type': 'application/json', ...CORS }
-        })
+      if (!ok) {
+        return new Response(JSON.stringify({
+          error: `Anthropic API error ${status}`,
+          detail: data
+        }), { status: 500, headers: { 'Content-Type': 'application/json', ...CORS } })
       }
 
-      const data = JSON.parse(rawText)
-      const text = data.content.filter(b => b.type === 'text').map(b => b.text).join('')
-      const match = text.match(/\{[\s\S]*\}/)
+      // Extract the final text content (Claude may do multiple search rounds internally)
+      const textBlocks = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('')
+      const match = textBlocks.match(/\{[\s\S]*\}/)
 
       if (!match) {
-        return new Response(JSON.stringify({ error: 'No JSON in response', raw: text.slice(0, 1000) }), {
-          status: 500, headers: { 'Content-Type': 'application/json', ...CORS }
-        })
+        return new Response(JSON.stringify({
+          error: 'No JSON found in response',
+          stop_reason: data.stop_reason,
+          raw: textBlocks.slice(0, 1000)
+        }), { status: 500, headers: { 'Content-Type': 'application/json', ...CORS } })
       }
 
-      return new Response(JSON.stringify({ result: JSON.parse(match[0]) }), {
+      let result
+      try {
+        result = JSON.parse(match[0])
+      } catch (e) {
+        return new Response(JSON.stringify({
+          error: 'JSON parse failed',
+          detail: e.message,
+          raw: match[0].slice(0, 500)
+        }), { status: 500, headers: { 'Content-Type': 'application/json', ...CORS } })
+      }
+
+      return new Response(JSON.stringify({ result }), {
         status: 200, headers: { 'Content-Type': 'application/json', ...CORS }
       })
 
     } catch (e) {
-      return new Response(JSON.stringify({ error: e.message, stack: e.stack }), {
+      return new Response(JSON.stringify({ error: e.message, stack: e.stack?.slice(0, 500) }), {
         status: 500, headers: { 'Content-Type': 'application/json', ...CORS }
       })
     }
@@ -106,18 +116,9 @@ After completing all required searches, return ONLY a valid JSON object — no m
 
   // ── Standard pass-through ─────────────────────────────────────────────────
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': anthropicKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify(body)
-    })
-    const data = await response.text()
-    return new Response(data, {
-      status: response.status,
+    const { ok, status, data } = await callAnthropic(anthropicKey, body)
+    return new Response(JSON.stringify(data), {
+      status,
       headers: { 'Content-Type': 'application/json', ...CORS }
     })
   } catch (e) {
