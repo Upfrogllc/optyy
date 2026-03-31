@@ -368,13 +368,13 @@ async function ghlCreateOpportunity(company, contactId, apiKey, locationId, pipe
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
     body: JSON.stringify({
-      title: `${company.name} — OPTYy`, status: 'open',
-      pipelineId, pipelineStageId: stageId, locationId, contactId, monetaryValue: 0,
-      customFields: [
-        { id: 'industry',    value: company.data?.industry    || '' },
-        { id: 'pain_points', value: company.data?.pain_points || '' },
-        { id: 'email_angle', value: company.data?.email_angle || '' },
-      ]
+      name: `${company.name} — OPTYy`,
+      status: 'open',
+      pipelineId,
+      pipelineStageId: stageId,
+      locationId,
+      contactId,
+      monetaryValue: 0,
     })
   })
   const data = await res.json()
