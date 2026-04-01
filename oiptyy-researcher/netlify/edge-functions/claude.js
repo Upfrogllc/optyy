@@ -1,51 +1,29 @@
-// Standard Netlify Function (not Edge) — supports up to 26s default, 
-// set netlify.toml [functions] timeout = 60 for longer
-
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
-async function callAnthropic(apiKey, payload) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'anthropic-version': '2023-06-01',
-      'x-api-key': apiKey,
-    },
-    body: JSON.stringify(payload)
-  })
-  const text = await res.text()
-  let data
-  try { data = JSON.parse(text) } catch { data = { raw: text } }
-  return { ok: res.ok, status: res.status, data }
-}
-
-exports.handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers: CORS, body: '' }
+export default async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: CORS })
   }
 
-  const anthropicKey = process.env.ANTHROPIC_API_KEY
+  const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
   if (!anthropicKey) {
-    return {
-      statusCode: 500,
-      headers: { 'Content-Type': 'application/json', ...CORS },
-      body: JSON.stringify({ error: 'ANTHROPIC_API_KEY not set' })
-    }
+    return new Response(JSON.stringify({ error: 'ANTHROPIC_API_KEY not set' }), {
+      status: 500, headers: { 'Content-Type': 'application/json', ...CORS }
+    })
   }
 
   let body
   try {
-    body = JSON.parse(event.body || '{}')
+    const text = await req.text()
+    body = JSON.parse(text)
   } catch (e) {
-    return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json', ...CORS },
-      body: JSON.stringify({ error: 'Invalid JSON', detail: e.message })
-    }
+    return new Response(JSON.stringify({ error: 'Invalid JSON', detail: e.message }), {
+      status: 400, headers: { 'Content-Type': 'application/json', ...CORS }
+    })
   }
 
   // ── Research mode ─────────────────────────────────────────────────────────
@@ -53,88 +31,88 @@ exports.handler = async (event) => {
     const name = body.research_company
 
     try {
-      const { ok, status, data } = await callAnthropic(anthropicKey, {
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 2000,
-        system: `You are a B2B intelligence researcher. Use web_search to research companies. Search for: (1) company owner/CEO, (2) owner background and hobbies, (3) company reviews and complaints. Then write your JSON answer.`,
-        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
-        messages: [{
-          role: 'user',
-          content: `Research "${name}" and return ONLY this JSON (no markdown, no preamble, no code blocks):
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01',
+          'x-api-key': anthropicKey,
+        },
+        body: JSON.stringify({
+          model: 'claude-3-5-sonnet-20241022',
+          max_tokens: 1500,
+          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }],
+          messages: [{
+            role: 'user',
+            content: `Research the company "${name}". Search for the owner/CEO name and search for customer reviews or complaints. Then return ONLY this JSON with no markdown or extra text:
 {
-  "industry": "what they do, size, revenue estimate",
-  "ownership": "privately held or public, owner name(s) and source",
-  "owner_profiles": "owner background, location, education, career history",
-  "owner_hobbies": "personal interests, sports, hobbies found online",
-  "owner_family": "spouse, children if publicly mentioned",
-  "pain_points": "3 operational challenges this business faces",
+  "industry": "what they do and estimated size",
+  "ownership": "privately held or public, owner name if found",
+  "owner_profiles": "owner background and location if found",
+  "owner_hobbies": "owner interests or hobbies if found online",
+  "owner_family": "spouse or children if publicly mentioned",
+  "pain_points": "3 operational challenges this business likely faces",
   "tech_stack": "software tools they likely use",
-  "recent_news": "notable news in past 12 months",
-  "reviews_negative": "common complaints from Google/Yelp/BBB with quote snippets if found",
-  "reviews_positive": "common praise themes from reviews",
-  "company_struggles": "real operational problems based on research",
-  "email_angle": "personalized 2-3 sentence OPTYy cold email opener using owner first name and a specific struggle found"
+  "recent_news": "any notable news in past 12 months",
+  "reviews_negative": "common complaints from reviews if found",
+  "reviews_positive": "common praise from reviews if found",
+  "company_struggles": "real problems this business appears to face",
+  "email_angle": "personalized 2-3 sentence OPTYy cold email opener referencing owner by first name and a specific struggle"
 }`
-        }]
+          }]
+        })
       })
 
-      if (!ok) {
-        return {
-          statusCode: 500,
-          headers: { 'Content-Type': 'application/json', ...CORS },
-          body: JSON.stringify({ error: `Anthropic API error ${status}`, detail: data })
-        }
+      const rawText = await res.text()
+
+      if (!res.ok) {
+        return new Response(JSON.stringify({ error: `Anthropic ${res.status}`, detail: rawText }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...CORS }
+        })
       }
 
+      const data = JSON.parse(rawText)
       const textBlocks = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('')
       const match = textBlocks.match(/\{[\s\S]*\}/)
 
       if (!match) {
-        return {
-          statusCode: 500,
-          headers: { 'Content-Type': 'application/json', ...CORS },
-          body: JSON.stringify({ error: 'No JSON in response', stop_reason: data.stop_reason, raw: textBlocks.slice(0, 500) })
-        }
+        return new Response(JSON.stringify({ error: 'No JSON in response', raw: textBlocks.slice(0, 500) }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...CORS }
+        })
       }
 
-      let result
-      try { result = JSON.parse(match[0]) }
-      catch (e) {
-        return {
-          statusCode: 500,
-          headers: { 'Content-Type': 'application/json', ...CORS },
-          body: JSON.stringify({ error: 'JSON parse failed', detail: e.message, raw: match[0].slice(0, 300) })
-        }
-      }
-
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json', ...CORS },
-        body: JSON.stringify({ result })
-      }
+      return new Response(JSON.stringify({ result: JSON.parse(match[0]) }), {
+        status: 200, headers: { 'Content-Type': 'application/json', ...CORS }
+      })
 
     } catch (e) {
-      return {
-        statusCode: 500,
-        headers: { 'Content-Type': 'application/json', ...CORS },
-        body: JSON.stringify({ error: e.message })
-      }
+      return new Response(JSON.stringify({ error: e.message }), {
+        status: 500, headers: { 'Content-Type': 'application/json', ...CORS }
+      })
     }
   }
 
   // ── Standard pass-through ─────────────────────────────────────────────────
   try {
-    const { ok, status, data } = await callAnthropic(anthropicKey, body)
-    return {
-      statusCode: status,
-      headers: { 'Content-Type': 'application/json', ...CORS },
-      body: JSON.stringify(data)
-    }
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'x-api-key': anthropicKey,
+      },
+      body: JSON.stringify(body)
+    })
+    const data = await res.text()
+    return new Response(data, {
+      status: res.status,
+      headers: { 'Content-Type': 'application/json', ...CORS }
+    })
   } catch (e) {
-    return {
-      statusCode: 500,
-      headers: { 'Content-Type': 'application/json', ...CORS },
-      body: JSON.stringify({ error: e.message })
-    }
+    return new Response(JSON.stringify({ error: e.message }), {
+      status: 500, headers: { 'Content-Type': 'application/json', ...CORS }
+    })
   }
 }
+
+export const config = { path: '/api/claude' }
