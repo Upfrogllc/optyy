@@ -41,10 +41,10 @@ export default async (req, context) => {
         body: JSON.stringify({
           model: 'claude-sonnet-4-5-20250929',
           max_tokens: 1500,
-          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }],
+          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }],
           messages: [{
             role: 'user',
-            content: `Research the company "${name}". Search for the owner/CEO and search for customer reviews or complaints. Then return ONLY this JSON with no markdown or extra text:
+            content: `Research the company "${name}". Search for: (1) owner/CEO name and background, (2) customer reviews and complaints across multiple years, (3) their pricing page or any online pricing, (4) the local market they serve. Return ONLY this JSON with no markdown or extra text:
 {
   "industry": "what they do and estimated size",
   "ownership": "privately held or public, owner name if found",
@@ -56,8 +56,12 @@ export default async (req, context) => {
   "recent_news": "any notable news in past 12 months",
   "reviews_negative": "common complaints from reviews if found",
   "reviews_positive": "common praise from reviews if found",
-  "company_struggles": "real problems this business appears to face",
-  "email_angle": "personalized 2-3 sentence OPTYy cold email opener referencing owner by first name and a specific struggle"
+  "reviews_trend": "is the review sentiment improving or declining over time? Compare older vs newer reviews — note any shift in rating, tone, or recurring themes. State direction: Improving / Declining / Stable, and explain why.",
+  "online_pricing": "does the company display transparent pricing on their website? Yes or No, and describe what pricing info is visible if any (e.g. starting at $X, package tiers, call for quote, etc.)",
+  "market_population": "estimate the number of households or businesses in the geographic market they serve. Include the city/region name, approximate population, and household count if available.",
+  "market_competition": "how competitive is their local market? Name 2-3 direct local competitors if found. Is the market saturated, growing, or underserved?",
+  "company_struggles": "real problems this business appears to face based on all research",
+  "email_angle": "personalized 2-3 sentence OPTYy cold email opener referencing owner by first name and a specific struggle found in research"
 }`
           }]
         })

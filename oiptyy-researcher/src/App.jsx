@@ -325,10 +325,10 @@ function parseCSV(text) {
 }
 
 function exportCSV(results) {
-  const headers = ['company_name','email','industry','ownership','owner_profiles','owner_hobbies','owner_family','pain_points','tech_stack','recent_news','reviews_negative','reviews_positive','company_struggles','email_angle','ghl_status']
+  const headers = ['company_name','email','industry','ownership','owner_profiles','owner_hobbies','owner_family','pain_points','tech_stack','recent_news','reviews_negative','reviews_positive','reviews_trend','online_pricing','market_population','market_competition','company_struggles','email_angle','ghl_status']
   const rows = results.filter(r => r.data).map(r => {
     const d = r.data
-    return [r.name, r.email, d.industry||'', d.ownership||'', d.owner_profiles||'', d.owner_hobbies||'', d.owner_family||'', d.pain_points||'', d.tech_stack||'', d.recent_news||'', d.reviews_negative||'', d.reviews_positive||'', d.company_struggles||'', d.email_angle||'', r.ghlStatus||'']
+    return [r.name, r.email, d.industry||'', d.ownership||'', d.owner_profiles||'', d.owner_hobbies||'', d.owner_family||'', d.pain_points||'', d.tech_stack||'', d.recent_news||'', d.reviews_negative||'', d.reviews_positive||'', d.reviews_trend||'', d.online_pricing||'', d.market_population||'', d.market_competition||'', d.company_struggles||'', d.email_angle||'', r.ghlStatus||'']
       .map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')
   })
   const blob = new Blob([[headers.join(','), ...rows].join('\n')], { type: 'text/csv' })
@@ -500,6 +500,22 @@ ${d.reviews_negative || 'No reviews found.'}
 ${d.reviews_positive || 'No reviews found.'}
 
 ─────────────────────────────────
+📈 REVIEW TREND
+${d.reviews_trend || 'N/A'}
+
+─────────────────────────────────
+💰 ONLINE PRICING TRANSPARENCY
+${d.online_pricing || 'N/A'}
+
+─────────────────────────────────
+🏘️ MARKET POPULATION
+${d.market_population || 'N/A'}
+
+─────────────────────────────────
+⚔️ MARKET COMPETITION
+${d.market_competition || 'N/A'}
+
+─────────────────────────────────
 🚨 COMPANY STRUGGLES (ANALYSIS)
 ${d.company_struggles || 'N/A'}
 
@@ -619,6 +635,16 @@ function CompanyCard({ company: c, expanded, onToggle, onPushGHL, ghlReady, sele
             <div className="research-block" style={{gridColumn:'1/-1',borderColor:'rgba(25,195,125,0.15)',background:'rgba(25,195,125,0.04)'}}>
               <div className="research-label" style={{color:'#19C37D'}}>👍 Positive review themes</div>
               <div className="research-value">{c.data.reviews_positive}</div>
+            </div>
+            <div className="research-block" style={{gridColumn:'1/-1',borderColor:'rgba(99,102,241,0.2)',background:'rgba(99,102,241,0.04)'}}>
+              <div className="research-label" style={{color:'#a5b4fc'}}>📈 Review trend (improving or declining?)</div>
+              <div className="research-value">{c.data.reviews_trend}</div>
+            </div>
+            <div className="research-block"><div className="research-label">💰 Online pricing transparency</div><div className="research-value">{c.data.online_pricing}</div></div>
+            <div className="research-block"><div className="research-label">🏘️ Market population</div><div className="research-value">{c.data.market_population}</div></div>
+            <div className="research-block" style={{gridColumn:'1/-1'}}>
+              <div className="research-label">⚔️ Market competition</div>
+              <div className="research-value">{c.data.market_competition}</div>
             </div>
             <div className="research-block" style={{gridColumn:'1/-1',borderColor:'rgba(251,191,36,0.2)',background:'rgba(251,191,36,0.04)'}}>
               <div className="research-label" style={{color:'#fbbf24'}}>🚨 Company struggles (analysis)</div>
