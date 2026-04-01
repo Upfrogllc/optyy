@@ -18,7 +18,14 @@ export default async (req) => {
 
   let body
   try {
-    const text = await req.text()
+    // Clone request before reading — required in Deno edge runtime
+    const cloned = req.clone()
+    let text = ''
+    try {
+      text = await req.text()
+    } catch {
+      text = await cloned.text()
+    }
     body = JSON.parse(text)
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Invalid JSON', detail: e.message }), {
