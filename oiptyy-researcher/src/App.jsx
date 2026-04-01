@@ -384,11 +384,11 @@ function exportCSV(results) {
 // Example: https://optyy-research.up.railway.app
 const RESEARCH_SERVER = 'https://optyy-research-server-production.up.railway.app'
 
-async function researchCompany(name) {
+async function researchCompany(name, emailAddr = '', phoneNum = '') {
   const res = await fetch(`${RESEARCH_SERVER}/research`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ research_company: name })
+    body: JSON.stringify({ research_company: name, email: emailAddr, phone: phoneNum })
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
@@ -926,7 +926,7 @@ function ResearchPage({ settings, addToast }) {
       setStatusMsg(`Researching ${i + 1} / ${companies.length}: ${c.name}`)
       setProgress(Math.round((i / companies.length) * 100))
       try {
-        const data = await researchCompany(c.name)
+        const data = await researchCompany(c.name, c.email || '')
         updateCompany(c.id, { status: 'done', data })
       } catch {
         updateCompany(c.id, { status: 'error' })
