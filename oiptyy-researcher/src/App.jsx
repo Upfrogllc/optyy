@@ -268,6 +268,27 @@ const css = `
   select.setting-input { cursor: pointer; }
   select.setting-input option { background: #0F2A44; color: #D6E1EA; }
 
+  /* ── Activity feed ── */
+  .activity-card {
+    background: #0F2A44; border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px; padding: 14px 18px; margin-bottom: 8px;
+    display: flex; align-items: flex-start; gap: 14px;
+  }
+  .activity-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    flex-shrink: 0; margin-top: 4px;
+  }
+  .dot-received  { background: #4a6a82; }
+  .dot-researching { background: #fbbf24; animation: pulse 1.5s infinite; }
+  .dot-done      { background: #19C37D; }
+  .dot-error     { background: #f87171; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .activity-company { font-size: 14px; font-weight: 600; color: #D6E1EA; margin-bottom: 3px; }
+  .activity-meta { font-size: 11px; color: #4a6a82; font-family: 'JetBrains Mono', monospace; margin-bottom: 4px; }
+  .activity-msg { font-size: 12px; color: #9FB3C8; }
+  .activity-time { font-size: 10px; color: #2a4a62; margin-left: auto; white-space: nowrap; flex-shrink: 0; font-family: 'JetBrains Mono', monospace; }
+  .activity-empty { text-align: center; padding: 60px 20px; color: #2a4a62; font-size: 13px; }
+
   /* ── Selection ── */
   .checkbox-wrap {
     width: 18px; height: 18px; flex-shrink: 0;
@@ -997,6 +1018,112 @@ function ResearchPage({ settings, addToast }) {
   )
 }
 
+// ─── Activity Page ────────────────────────────────────────────────────────────
+function ActivityPage() {
+  const [events, setEvents] = React.useState([])
+  const [loading, setLoading] = React.useState(true)
+  const [lastRefresh, setLastRefresh] = React.useState(null)
+
+  const fetchActivity = async () => {
+    try {
+      const res = await fetch(`${RESEARCH_SERVER}/activity`)
+      const data = await res.json()
+      setEvents(data.events || [])
+      setLastRefresh(new Date())
+    } catch (e) {
+      console.error('Activity fetch failed:', e)
+    }
+    setLoading(false)
+  }
+
+  React.useEffect(() => {
+    fetchActivity()
+    // Auto-refresh every 15 seconds
+    const interval = setInterval(fetchActivity, 15000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const statusDot = (status) => {
+    const map = { received: 'dot-received', researching: 'dot-researching', done: 'dot-done', error: 'dot-error' }
+    return map[status] || 'dot-received'
+  }
+
+  const statusLabel = (status) => {
+    const map = { received: 'Received', researching: 'Researching...', done: 'Complete', error: 'Error' }
+    return map[status] || status
+  }
+
+  const timeAgo = (iso) => {
+    const diff = Math.floor((Date.now() - new Date(iso)) / 1000)
+    if (diff < 60) return `${diff}s ago`
+    if (diff < 3600) return `${Math.floor(diff/60)}m ago`
+    return `${Math.floor(diff/3600)}h ago`
+  }
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div className="page-title">Webhook Activity</div>
+        <div className="page-sub">Live feed of GHL contacts being auto-researched via webhook.</div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20, padding: '14px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 12, color: '#9FB3C8', fontFamily: 'JetBrains Mono, monospace' }}>
+            Webhook URL:
+          </div>
+          <div style={{ fontSize: 11, color: '#19C37D', fontFamily: 'JetBrains Mono, monospace', background: 'rgba(25,195,125,0.08)', padding: '4px 10px', borderRadius: 6, flex: 1, wordBreak: 'break-all' }}>
+            {RESEARCH_SERVER}/webhook
+          </div>
+          <button className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 12px' }} onClick={fetchActivity}>
+            ⟳ Refresh
+          </button>
+        </div>
+        {lastRefresh && (
+          <div style={{ fontSize: 10, color: '#2a4a62', marginTop: 8, fontFamily: 'JetBrains Mono, monospace' }}>
+            Last refreshed: {lastRefresh.toLocaleTimeString()} · Auto-refreshes every 15s
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="activity-empty"><span className="spinner" /> Loading activity...</div>
+      ) : events.length === 0 ? (
+        <div className="activity-empty">
+          <div style={{ fontSize: 36, marginBottom: 16, opacity: 0.3 }}>🔔</div>
+          <div style={{ color: '#9FB3C8', fontWeight: 600, marginBottom: 6 }}>No activity yet</div>
+          Configure your GHL webhook to start seeing auto-research events here.
+        </div>
+      ) : (
+        <div>
+          {events.map((e, i) => (
+            <div key={i} className="activity-card">
+              <div className={`activity-dot ${statusDot(e.status)}`} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="activity-company">{e.company}</div>
+                <div className="activity-meta">
+                  {e.email && <span>{e.email}</span>}
+                  {e.email && e.phone && <span> · </span>}
+                  {e.phone && <span>{e.phone}</span>}
+                  {e.owner && <span> · {e.owner}</span>}
+                  {e.industry && <span> · {e.industry}</span>}
+                </div>
+                <div className="activity-msg">
+                  <span style={{ color: e.status === 'done' ? '#19C37D' : e.status === 'error' ? '#f87171' : e.status === 'researching' ? '#fbbf24' : '#4a6a82', fontWeight: 500 }}>
+                    {statusLabel(e.status)}
+                  </span>
+                  {e.message && <span style={{ color: '#4a6a82' }}> — {e.message}</span>}
+                </div>
+              </div>
+              <div className="activity-time">{timeAgo(e.timestamp)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [page, setPage]           = useState('research')
@@ -1029,8 +1156,9 @@ export default function App() {
           <nav className="sidebar-nav">
             <div className="nav-section">Platform</div>
             {[
-              { id: 'research', label: 'Research',  icon: <IconSearch /> },
-              { id: 'settings', label: 'Settings',  icon: <IconSettings /> },
+              { id: 'research',  label: 'Research',  icon: <IconSearch /> },
+              { id: 'activity',  label: 'Activity',   icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
+              { id: 'settings',  label: 'Settings',   icon: <IconSettings /> },
             ].map(n => (
               <button key={n.id} className={`nav-item ${page === n.id ? 'active' : ''}`} onClick={() => setPage(n.id)}>
                 {n.icon}
@@ -1051,7 +1179,8 @@ export default function App() {
         </aside>
 
         <main className="main">
-          {page === 'research' && <ResearchPage settings={settings} addToast={addToast} />}
+          {page === 'research'  && <ResearchPage settings={settings} addToast={addToast} />}
+          {page === 'activity'  && <ActivityPage />}
           {page === 'settings' && (
             <SettingsPage
               settings={settings} pipelines={pipelines}
