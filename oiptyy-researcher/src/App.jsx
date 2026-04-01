@@ -338,9 +338,12 @@ function exportCSV(results) {
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
+// !! After deploying to Railway, replace this URL with your Railway URL
+// Example: https://optyy-research.up.railway.app
+const RESEARCH_SERVER = 'https://optyy-research-server-production.up.railway.app'
+
 async function researchCompany(name) {
-  // Agentic loop runs server-side in the Netlify function
-  const res = await fetch('/.netlify/functions/claude', {
+  const res = await fetch(`${RESEARCH_SERVER}/research`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ research_company: name })
