@@ -4,8 +4,8 @@ const CORS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
-export default async (req) => {
-  if (req.method === 'OPTIONS') {
+export default async (request, context) => {
+  if (request.method === 'OPTIONS') {
     return new Response(null, { headers: CORS })
   }
 
@@ -18,15 +18,7 @@ export default async (req) => {
 
   let body
   try {
-    // Clone request before reading — required in Deno edge runtime
-    const cloned = req.clone()
-    let text = ''
-    try {
-      text = await req.text()
-    } catch {
-      text = await cloned.text()
-    }
-    body = JSON.parse(text)
+    body = await request.json()
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Invalid JSON', detail: e.message }), {
       status: 400, headers: { 'Content-Type': 'application/json', ...CORS }
@@ -51,7 +43,7 @@ export default async (req) => {
           tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }],
           messages: [{
             role: 'user',
-            content: `Research the company "${name}". Search for the owner/CEO name and search for customer reviews or complaints. Then return ONLY this JSON with no markdown or extra text:
+            content: `Research the company "${name}". Search for the owner/CEO and search for customer reviews or complaints. Then return ONLY this JSON with no markdown or extra text:
 {
   "industry": "what they do and estimated size",
   "ownership": "privately held or public, owner name if found",
