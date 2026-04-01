@@ -39,7 +39,7 @@ export default async (req, context) => {
           'x-api-key': anthropicKey,
         },
         body: JSON.stringify({
-          model: 'claude-3-5-sonnet-20241022',
+          model: 'claude-sonnet-4-5-20250929',
           max_tokens: 1500,
           tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }],
           messages: [{
