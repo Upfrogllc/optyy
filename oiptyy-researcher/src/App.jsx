@@ -381,45 +381,34 @@ async function ghlUpsertContact(company, apiKey, locationId) {
     'Version': '2021-07-28'
   }
 
-  // Step 1: Try GHL upsert endpoint
-  const upsertRes = await fetch('/api/ghl/contacts/upsert/', {
-    method: 'POST', headers,
-    body: JSON.stringify(contactPayload)
-  })
-  const upsertData = await upsertRes.json()
+  // Step 1: Search for existing contact by email first
+  const searchRes = await fetch(
+    `/api/ghl/contacts/?locationId=${encodeURIComponent(locationId)}&email=${encodeURIComponent(company.email)}`,
+    { headers }
+  )
+  const searchData = await searchRes.json()
+  const existing = searchData.contacts?.[0] || searchData.contact
 
-  if (upsertRes.ok) {
-    const contactId = upsertData.contact?.id || upsertData.id
-    const isNew     = upsertData.new !== false
-    return { contactId, isNew }
-  }
-
-  // Step 2: If upsert failed with duplicate error, look up by email then PATCH
-  const errMsg = Array.isArray(upsertData.message) ? upsertData.message.join(' ') : (upsertData.message || '')
-  const isDuplicate = upsertRes.status === 422 || errMsg.toLowerCase().includes('duplicate') || errMsg.toLowerCase().includes('exist')
-
-  if (isDuplicate) {
-    // Search for the existing contact by email
-    const searchRes = await fetch(
-      `/api/ghl/contacts/?locationId=${encodeURIComponent(locationId)}&email=${encodeURIComponent(company.email)}`,
-      { headers }
-    )
-    const searchData = await searchRes.json()
-    const existing   = searchData.contacts?.[0] || searchData.contact
-    if (!existing?.id) throw new Error('Contact exists but could not be found by email lookup')
-
-    // PATCH the existing contact
+  // Step 2a: Contact exists — update it via PUT
+  if (existing?.id) {
     const updateRes = await fetch(`/api/ghl/contacts/${existing.id}/`, {
       method: 'PUT', headers,
       body: JSON.stringify(contactPayload)
     })
     const updateData = await updateRes.json()
     if (!updateRes.ok) throw new Error(Array.isArray(updateData.message) ? updateData.message.join(', ') : updateData.message || 'Contact update failed')
-
     return { contactId: existing.id, isNew: false }
   }
 
-  throw new Error(errMsg || 'Contact upsert failed')
+  // Step 2b: No existing contact — create new one
+  const createRes = await fetch('/api/ghl/contacts/', {
+    method: 'POST', headers,
+    body: JSON.stringify(contactPayload)
+  })
+  const createData = await createRes.json()
+  if (!createRes.ok) throw new Error(Array.isArray(createData.message) ? createData.message.join(', ') : createData.message || 'Contact creation failed')
+  const contactId = createData.contact?.id || createData.id
+  return { contactId, isNew: true }
 }
 
 async function ghlCreateOpportunity(company, contactId, apiKey, locationId, pipelineId, stageId) {
