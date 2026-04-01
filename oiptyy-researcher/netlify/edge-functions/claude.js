@@ -16,29 +16,12 @@ export default async (req, context) => {
     })
   }
 
-  // Debug: return request info to diagnose empty body issue
-  if (req.method === 'GET') {
-    return new Response(JSON.stringify({ status: 'edge function alive' }), {
-      status: 200, headers: { 'Content-Type': 'application/json', ...CORS }
-    })
-  }
-
-  const rawText = await req.text()
-
-  if (!rawText || rawText.trim() === '') {
-    return new Response(JSON.stringify({
-      error: 'Empty body received',
-      method: req.method,
-      contentType: req.headers.get('content-type'),
-      headers: Object.fromEntries(req.headers.entries()),
-    }), { status: 400, headers: { 'Content-Type': 'application/json', ...CORS } })
-  }
-
   let body
   try {
-    body = JSON.parse(rawText)
+    const text = await req.text()
+    body = JSON.parse(text)
   } catch (e) {
-    return new Response(JSON.stringify({ error: 'Invalid JSON', detail: e.message, rawText: rawText.slice(0, 200) }), {
+    return new Response(JSON.stringify({ error: 'Invalid JSON', detail: e.message }), {
       status: 400, headers: { 'Content-Type': 'application/json', ...CORS }
     })
   }
