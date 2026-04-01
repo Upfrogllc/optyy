@@ -1,3 +1,6 @@
+[functions]
+  directory = "netlify/functions"
+
 [[redirects]]
   from = "/api/anthropic/*"
   to = "https://api.anthropic.com/:splat"

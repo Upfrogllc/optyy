@@ -340,7 +340,7 @@ function exportCSV(results) {
 // ─── API ──────────────────────────────────────────────────────────────────────
 async function researchCompany(name) {
   // Agentic loop runs server-side in the Netlify function
-  const res = await fetch('/api/claude', {
+  const res = await fetch('/.netlify/functions/claude', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ research_company: name })
