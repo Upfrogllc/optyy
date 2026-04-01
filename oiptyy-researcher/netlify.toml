@@ -21,5 +21,3 @@
   to = "/index.html"
   status = 200
 
-[functions]
-  timeout = 60
